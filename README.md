@@ -198,5 +198,3 @@ Network connectivity between your application and the screen (UDP port 9005 by d
 
 ### License
 MIT
-
-This is the full, detailed README. Copy the entire content between the triple backticks into your `README.md` file.
