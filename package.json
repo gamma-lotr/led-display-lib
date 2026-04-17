@@ -1,0 +1,38 @@
+{
+  "name": "@gamma-lotr/led-display-lib",
+  "version": "1.0.3",
+  "description": "LED display control library for LGSV1301 protocol with parking system, screen control, and clear screen features",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "led",
+    "lgsv1301",
+    "parking",
+    "display",
+    "car-plate"
+  ],
+  "author": {
+    "name": "gamma-lotr",
+    "email": "gssblotr@gmail.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gamma-lotr/led-display-lib.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gamma-lotr/led-display-lib/issues"
+  },
+  "homepage": "https://github.com/gamma-lotr/led-display-lib#readme",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}
