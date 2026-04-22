@@ -7,5 +7,6 @@ export type { ParkingConfig, ParkingInstance } from './features/parking';
 
 export { clearScreen } from './features/clear';
 export { screenOn, screenOff } from './features/screen';
+export { CarPlateService, sendCarPlateOnly } from './features/carPlateDisplay';
 
 export { sendToScreen } from './utils/send';
