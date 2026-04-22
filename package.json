@@ -1,6 +1,6 @@
 {
   "name": "@gamma-lotr/led-display-lib",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "LED display control library for LGSV1301 protocol with parking system, screen control, and clear screen features",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
