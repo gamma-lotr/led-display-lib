@@ -5,9 +5,10 @@ Built for parking systems, digital signage, and real‑time information displays
 
 ## Features
 
-- 🅿️ **Parking System** – Shows current time and date, listens for UDP messages to display a car licence plate on a dedicated row, then auto‑reverts after a configurable delay.
+- 🅿️ **Parking System** – Shows current time and date, listens for UDP messages to display a car licence plate on a dedicated row, then auto‑reverts after a configurable delay. Also provides a direct `showCarPlate` method.
 - 🔌 **Screen On/Off** – Remotely turn the LED screen on or off.
 - 🧹 **Clear Screen** – Send a blank program to hide all content (requires parking system to be stopped first).
+- 💓 **Heartbeat** – Send a `0xA5` command to verify the device is reachable and alive.
 - ⚙️ **Fully Configurable** – Customise row texts, colours, entry effects, screen dimensions, time/date formats, and more.
 - 📦 **TypeScript Ready** – Includes type definitions.
 
@@ -17,7 +18,7 @@ Built for parking systems, digital signage, and real‑time information displays
 npm install @gamma-lotr/led-display-lib
 
 ```typescript
-import { startParkingSystem, screenOn, screenOff, clearScreen } from '@gamma-lotr/led-display-lib';
+import { startParkingSystem, screenOn, screenOff, clearScreen, buildHeartbeat, sendHeartbeat } from '@gamma-lotr/led-display-lib';
 
 // 1. Start the parking system
 const parking = startParkingSystem({
@@ -25,13 +26,21 @@ const parking = startParkingSystem({
   cardNumber: '13061913001',
 });
 
-// 2. Later, stop the parking system
+// 2. Show a car plate directly (without UDP)
+await parking.showCarPlate('ABC-1234');
+
+// 3. Stop the parking system
 parking.stop();
 
-// 3. Basic screen control
+// 4. Basic screen control
 await screenOn('172.18.60.180', 9005, '13061913001');
 await screenOff('172.18.60.180', 9005, '13061913001');
 await clearScreen('172.18.60.180', 9005, '13061913001');
+
+// 5. Send a heartbeat
+const heartbeatMsg = buildHeartbeat({ mode: CommunicationMode.GPRS, cardNumber: '13061913001' });
+// send it via your own UDP method, or use the helper:
+await sendHeartbeat('172.18.60.180', 9005, '13061913001');
 ```
 
 ## API Reference
@@ -91,6 +100,14 @@ Sends an empty program to the screen, making it blank.
 ⚠️ Important: If the parking system is running, it will continuously rewrite the display. You must call parking.stop() before clearScreen() for the screen to stay blank.
 
 Parameters are the same as screenOn.
+
+### sendHeartbeat(host: string, port: number, cardNumber?: string): Promise<void>
+
+Sends a heartbeat (0xA5) command to the screen.
+
+host – IP address of the LED screen.
+port – UDP port (usually 9005).
+cardNumber – Optional 12‑character card number (default '13061913001').
 
 ### Sending a Car Plate to the Parking System
 
@@ -166,6 +183,12 @@ export class DisplayController {
     await clearScreen('172.18.60.180', 9005, '13061913001');
     return { message: 'Screen cleared' };
   }
+
+  @Get('heartbeat')
+  async heartbeat() {
+    await sendHeartbeat('172.18.60.180', 9005, '13061913001');
+    return { message: 'Heartbeat sent' };
+  }
 }
 ```
 
@@ -195,6 +218,7 @@ Network connectivity between your application and the screen (UDP port 9005 by d
 | Car plate not showing | Verify that the parking system is started (parking/start). Make sure the UDP packet is sent to the same machine running the library, on port 9006 (or your custom listenPort). |
 | Clear screen does nothing | The parking system is probably still running. Call parking.stop() first. |
 | Time/date not updating | The device’s internal clock may be off. The library automatically sends a clock set command on start. If that fails, check that the screen accepts clock commands. |
+| Heartbeat not working | Verify network connectivity and that the device is still powered. The heartbeat packet expects a response; you may need to implement a timeout. |
 
 ### License
 MIT
