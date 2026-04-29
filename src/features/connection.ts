@@ -5,6 +5,11 @@ import { CommunicationMode } from '../types';
 export interface DeviceInfo {
   success: boolean;
   errorMessage?: string;
+  protocolVersion?: number;
+  hardwareVersion?: string;
+  softwareVersion?: string;
+  screenWidth?: number;
+  screenHeight?: number;
 }
 
 export async function testConnection(
@@ -46,11 +51,32 @@ export async function testConnection(
         const content = serialPacket.subarray(7, 7 + length);
         if (content.length < 1) throw new Error('Empty content');
         const errorCode = content[0];
-        if (errorCode === 0x01) {
-          resolve({ success: true });
-        } else {
+        if (errorCode !== 0x01) {
           resolve({ success: false, errorMessage: `Device error code: 0x${errorCode.toString(16)}` });
+          cleanup();
+          return;
         }
+
+        // Parse full response (according to section 5.13)
+        let pos = 1;
+        const protoId = content[pos++];
+        pos++; // reserved
+        const hardPub = content.slice(pos, pos + 4).toString('hex'); pos += 4;
+        const bootPub = content.slice(pos, pos + 2).toString('hex'); pos += 2; // boot version (not used)
+        const softPub = content.slice(pos, pos + 3).toString('hex'); pos += 3;
+        pos += 22; // skip Soft_DateTime
+        pos++; // skip appType
+        const screenWidth = content[pos] + (content[pos + 1] << 8); pos += 2;
+        const screenHeight = content[pos] + (content[pos + 1] << 8);
+
+        resolve({
+          success: true,
+          protocolVersion: protoId,
+          hardwareVersion: hardPub,
+          softwareVersion: softPub,
+          screenWidth,
+          screenHeight,
+        });
         cleanup();
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
