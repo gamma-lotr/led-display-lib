@@ -1,0 +1,248 @@
+import * as dgram from 'dgram';
+import { buildSavedProgram, buildProgramOnDemand, buildSetClock } from '../commands';
+import {
+  PartitionType,
+  FontType,
+  FontColor,
+  EntryType,
+  CommunicationMode,
+  InstantProgramParams,
+} from '../types';
+import { sendToScreen } from '../utils/send';
+
+export interface ParkingConfig {
+  screenHost: string;
+  screenPort?: number;
+  listenPort?: number;
+  cardNumber?: string;
+  screenWidth?: number;
+  screenHeight?: number;
+  rowHeight?: number;
+  carPlateDisplayMs?: number;
+  udpTimeoutMs?: number;
+  timeFormat?: string;
+  dateFormat?: string;
+  rowTexts?: string[];
+  rowColors?: number[];
+  rowEntryTypes?: EntryType[];
+  rowEntrySpeeds?: number[];
+  // New optional overrides for row1 and row2
+  row1Text?: string;
+  row1Color?: number;
+  row2Text?: string;
+  row2Color?: number;
+}
+
+export interface ParkingInstance {
+  stop: () => void;
+}
+
+export function startParkingSystem(config: ParkingConfig): ParkingInstance {
+  const host = config.screenHost;
+  const port = config.screenPort ?? 9005;
+  const listenPort = config.listenPort ?? 9006;
+  const cardNumber = config.cardNumber ?? '13061913001';
+  const screenWidth = config.screenWidth ?? 64;
+  const screenHeight = config.screenHeight ?? 64;
+  const rowHeight = config.rowHeight ?? 16;
+  const carPlateDisplayMs = config.carPlateDisplayMs ?? 10000;
+  const udpTimeoutMs = config.udpTimeoutMs ?? 5000;
+  const timeFormat = config.timeFormat ?? 'HH:MM';
+  const dateFormat = config.dateFormat ?? 'YYYY-MM-DD';
+
+  // Base row configurations (order: row1, row2, time, date)
+  let defaultRows = config.rowTexts ?? ['Welcome', 'Car Parking', '00:00', '2025-01-01'];
+  let defaultColors = config.rowColors ?? [0, 2, 1, 2];
+  const defaultEntryTypes = config.rowEntryTypes ?? [
+    EntryType.STATIC,
+    EntryType.SCROLL_RIGHT,
+    EntryType.STATIC,
+    EntryType.SCROLL_RIGHT,
+  ];
+  const defaultEntrySpeeds = config.rowEntrySpeeds ?? [0, 5, 0, 5];
+
+  // Apply overrides for row1 and row2 (if provided)
+  if (config.row1Text !== undefined) defaultRows[0] = config.row1Text;
+  if (config.row1Color !== undefined) defaultColors[0] = config.row1Color;
+  if (config.row2Text !== undefined) defaultRows[1] = config.row2Text;
+  if (config.row2Color !== undefined) defaultColors[1] = config.row2Color;
+
+  const TIME_ROW_INDEX = 2;
+  const CAR_PLATE_ROW_INDEX = 1;
+  const DATE_ROW_INDEX = 3;
+
+  let currentRows = defaultRows.map((text, i) => ({
+    text,
+    color: defaultColors[i],
+    entryType: defaultEntryTypes[i],
+    entrySpeed: defaultEntrySpeeds[i],
+  }));
+
+  // Store the overridden default values for row2 (used when reverting car plate)
+  const defaultRow2Text = defaultRows[CAR_PLATE_ROW_INDEX];
+  const defaultRow2Color = defaultColors[CAR_PLATE_ROW_INDEX];
+  const defaultRow2EntryType = defaultEntryTypes[CAR_PLATE_ROW_INDEX];
+  const defaultRow2EntrySpeed = defaultEntrySpeeds[CAR_PLATE_ROW_INDEX];
+
+  let carPlateTimeout: NodeJS.Timeout | null = null;
+  let timeUpdateInterval: NodeJS.Timeout | null = null;
+  let udpServer: dgram.Socket | null = null;
+
+  function mapColor(color: number): FontColor {
+    const map: Record<number, FontColor> = {
+      0: FontColor.RED,
+      1: FontColor.GREEN,
+      2: FontColor.YELLOW,
+      3: FontColor.BLUE,
+      4: FontColor.PURPLE,
+      5: FontColor.CYAN,
+      6: FontColor.WHITE,
+    };
+    return map[color] ?? FontColor.RED;
+  }
+
+  function formatDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return dateFormat.replace('YYYY', String(year)).replace('MM', month).replace('DD', day);
+  }
+
+  function formatTime(date: Date): string {
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return timeFormat.replace('HH', hours).replace('MM', minutes);
+  }
+
+  function buildProgramParams(programId: number = 1): InstantProgramParams {
+    const maxRows = Math.floor(screenHeight / rowHeight);
+    const usableRows = currentRows.slice(0, maxRows);
+    const partitions = usableRows.map((row, idx) => ({
+      id: idx,
+      left: 0,
+      top: idx * rowHeight,
+      width: screenWidth,
+      height: rowHeight,
+      type: PartitionType.TEXT,
+      fontType: FontType.FONT_16X16,
+      fontColor: mapColor(row.color),
+      entryType: row.entryType,
+      entrySpeed: row.entrySpeed,
+      stayTime: 0xff,
+      content: row.text,
+    }));
+    return {
+      programId,
+      playType: 'duration',
+      playValue: 0,
+      hasVoice: false,
+      partitions,
+    };
+  }
+
+  async function updateDisplay() {
+    const params = buildProgramParams(1);
+    const saveMsg = buildSavedProgram(params, { mode: CommunicationMode.GPRS, cardNumber });
+    await sendToScreen(saveMsg, host, port, udpTimeoutMs);
+    const playMsg = buildProgramOnDemand(
+      { programId: 1, action: 'play', flag: 'continuous' },
+      { mode: CommunicationMode.GPRS, cardNumber }
+    );
+    await sendToScreen(playMsg, host, port, udpTimeoutMs);
+  }
+
+  async function setDeviceClock() {
+    const now = new Date();
+    const msg = buildSetClock(
+      {
+        year: now.getFullYear(),
+        month: now.getMonth() + 1,
+        day: now.getDate(),
+        hour: now.getHours(),
+        minute: now.getMinutes(),
+        second: now.getSeconds(),
+        weekday: now.getDay(),
+      },
+      { mode: CommunicationMode.GPRS, cardNumber }
+    );
+    await sendToScreen(msg, host, port, udpTimeoutMs);
+  }
+
+  async function showCarPlate(plate: string) {
+    if (carPlateTimeout) clearTimeout(carPlateTimeout);
+    currentRows[CAR_PLATE_ROW_INDEX].text = plate;
+    currentRows[CAR_PLATE_ROW_INDEX].entryType = EntryType.STATIC;
+    await updateDisplay();
+
+    carPlateTimeout = setTimeout(async () => {
+      currentRows[CAR_PLATE_ROW_INDEX].text = defaultRow2Text;
+      currentRows[CAR_PLATE_ROW_INDEX].entryType = defaultRow2EntryType;
+      currentRows[CAR_PLATE_ROW_INDEX].entrySpeed = defaultRow2EntrySpeed;
+      currentRows[CAR_PLATE_ROW_INDEX].color = defaultRow2Color;
+      await updateDisplay();
+      carPlateTimeout = null;
+    }, carPlateDisplayMs);
+  }
+
+  function startUdpListener() {
+    udpServer = dgram.createSocket('udp4');
+    udpServer.on('error', (err) => console.error('UDP listener error:', err));
+    udpServer.on('message', (msg, rinfo) => {
+      const plate = msg.toString().trim();
+      if (plate) {
+        console.log(`[Parking] Received plate: "${plate}" from ${rinfo.address}:${rinfo.port}`);
+        showCarPlate(plate).catch(console.error);
+      }
+    });
+    udpServer.bind(listenPort, () => {
+      console.log(`[Parking] Listening for car plates on port ${listenPort}`);
+    });
+  }
+
+  function startTimeDateUpdater() {
+    let lastTime = '';
+    let lastDate = '';
+    timeUpdateInterval = setInterval(async () => {
+      const now = new Date();
+      const newTime = formatTime(now);
+      const newDate = formatDate(now);
+      let changed = false;
+      if (newTime !== lastTime) {
+        currentRows[TIME_ROW_INDEX].text = newTime;
+        lastTime = newTime;
+        changed = true;
+      }
+      if (newDate !== lastDate) {
+        currentRows[DATE_ROW_INDEX].text = newDate;
+        lastDate = newDate;
+        changed = true;
+      }
+      if (changed) await updateDisplay();
+    }, 1000);
+  }
+
+  // Initialise everything
+  (async () => {
+    try {
+      await setDeviceClock();
+      const now = new Date();
+      currentRows[TIME_ROW_INDEX].text = formatTime(now);
+      currentRows[DATE_ROW_INDEX].text = formatDate(now);
+      await updateDisplay();
+      startTimeDateUpdater();
+      startUdpListener();
+      console.log('[Parking] System started.');
+    } catch (err) {
+      console.error('[Parking] Initialization failed:', err);
+    }
+  })();
+
+  return {
+    stop: () => {
+      if (carPlateTimeout) clearTimeout(carPlateTimeout);
+      if (timeUpdateInterval) clearInterval(timeUpdateInterval);
+      if (udpServer) udpServer.close();
+      console.log('[Parking] System stopped.');
+    },
+  };
+}
