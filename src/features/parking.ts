@@ -1,5 +1,5 @@
 import * as dgram from 'dgram';
-import { buildInstantProgram, buildSetClock } from '../commands';
+import { buildSavedProgram, buildProgramOnDemand, buildSetClock } from '../commands';
 import {
   PartitionType,
   FontType,
@@ -25,6 +25,11 @@ export interface ParkingConfig {
   rowColors?: number[];
   rowEntryTypes?: EntryType[];
   rowEntrySpeeds?: number[];
+  // New optional overrides for row1 and row2
+  row1Text?: string;
+  row1Color?: number;
+  row2Text?: string;
+  row2Color?: number;
 }
 
 export interface ParkingInstance {
@@ -43,9 +48,9 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   const timeFormat = config.timeFormat ?? 'HH:MM';
   const dateFormat = config.dateFormat ?? 'YYYY-MM-DD';
 
-  // Row order: 0: Welcome, 1: Car Parking, 2: Time, 3: Date
-  const defaultRows = config.rowTexts ?? ['Welcome', 'Car Parking', '00:00', '2025-01-01'];
-  const defaultColors = config.rowColors ?? [0, 2, 1, 2];
+  // Base row configurations (order: row1, row2, time, date)
+  let defaultRows = config.rowTexts ?? ['Welcome', 'Car Parking', '00:00', '2025-01-01'];
+  let defaultColors = config.rowColors ?? [0, 2, 1, 2];
   const defaultEntryTypes = config.rowEntryTypes ?? [
     EntryType.STATIC,
     EntryType.SCROLL_RIGHT,
@@ -54,9 +59,15 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   ];
   const defaultEntrySpeeds = config.rowEntrySpeeds ?? [0, 5, 0, 5];
 
-  const TIME_ROW_INDEX = 2;        // third row (0‑based)
-  const CAR_PLATE_ROW_INDEX = 1;   // second row
-  const DATE_ROW_INDEX = 3;        // fourth row
+  // Apply overrides for row1 and row2 (if provided)
+  if (config.row1Text !== undefined) defaultRows[0] = config.row1Text;
+  if (config.row1Color !== undefined) defaultColors[0] = config.row1Color;
+  if (config.row2Text !== undefined) defaultRows[1] = config.row2Text;
+  if (config.row2Color !== undefined) defaultColors[1] = config.row2Color;
+
+  const TIME_ROW_INDEX = 2;
+  const CAR_PLATE_ROW_INDEX = 1;
+  const DATE_ROW_INDEX = 3;
 
   let currentRows = defaultRows.map((text, i) => ({
     text,
@@ -65,11 +76,18 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     entrySpeed: defaultEntrySpeeds[i],
   }));
 
+  // Store the overridden default values for row2 (used when reverting car plate)
+  const defaultRow2Text = defaultRows[CAR_PLATE_ROW_INDEX];
+  const defaultRow2Color = defaultColors[CAR_PLATE_ROW_INDEX];
+  const defaultRow2EntryType = defaultEntryTypes[CAR_PLATE_ROW_INDEX];
+  const defaultRow2EntrySpeed = defaultEntrySpeeds[CAR_PLATE_ROW_INDEX];
+
   let carPlateTimeout: NodeJS.Timeout | null = null;
   let timeUpdateInterval: NodeJS.Timeout | null = null;
   let udpServer: dgram.Socket | null = null;
 
-  // Helper: map color number to FontColor enum
+  // Helper functions (mapColor, formatDate, formatTime, buildProgramParams)
+  // ... (unchanged from your original)
   function mapColor(color: number): FontColor {
     const map: Record<number, FontColor> = {
       0: FontColor.RED,
@@ -96,7 +114,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     return timeFormat.replace('HH', hours).replace('MM', minutes);
   }
 
-  function buildProgramParams(): InstantProgramParams {
+  function buildProgramParams(programId: number = 1): InstantProgramParams {
     const maxRows = Math.floor(screenHeight / rowHeight);
     const usableRows = currentRows.slice(0, maxRows);
     const partitions = usableRows.map((row, idx) => ({
@@ -114,7 +132,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
       content: row.text,
     }));
     return {
-      programId: 0,
+      programId,
       playType: 'duration',
       playValue: 0,
       hasVoice: false,
@@ -123,9 +141,14 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   }
 
   async function updateDisplay() {
-    const params = buildProgramParams();
-    const msg = buildInstantProgram(params, { mode: CommunicationMode.GPRS, cardNumber });
-    await sendToScreen(msg, host, port);
+    const params = buildProgramParams(1);
+    const saveMsg = buildSavedProgram(params, { mode: CommunicationMode.GPRS, cardNumber });
+    await sendToScreen(saveMsg, host, port);
+    const playMsg = buildProgramOnDemand(
+      { programId: 1, action: 'play', flag: 'continuous' },
+      { mode: CommunicationMode.GPRS, cardNumber }
+    );
+    await sendToScreen(playMsg, host, port);
   }
 
   async function setDeviceClock() {
@@ -149,12 +172,15 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     if (carPlateTimeout) clearTimeout(carPlateTimeout);
     currentRows[CAR_PLATE_ROW_INDEX].text = plate;
     currentRows[CAR_PLATE_ROW_INDEX].entryType = EntryType.STATIC;
+    // Keep the color as the overridden default (or you can use a dedicated plate color – but we keep original)
+    // Here we keep the color from the current row (which is the overridden default color)
     await updateDisplay();
 
     carPlateTimeout = setTimeout(async () => {
-      currentRows[CAR_PLATE_ROW_INDEX].text = defaultRows[CAR_PLATE_ROW_INDEX];
-      currentRows[CAR_PLATE_ROW_INDEX].entryType = defaultEntryTypes[CAR_PLATE_ROW_INDEX];
-      currentRows[CAR_PLATE_ROW_INDEX].entrySpeed = defaultEntrySpeeds[CAR_PLATE_ROW_INDEX];
+      currentRows[CAR_PLATE_ROW_INDEX].text = defaultRow2Text;
+      currentRows[CAR_PLATE_ROW_INDEX].entryType = defaultRow2EntryType;
+      currentRows[CAR_PLATE_ROW_INDEX].entrySpeed = defaultRow2EntrySpeed;
+      currentRows[CAR_PLATE_ROW_INDEX].color = defaultRow2Color;
       await updateDisplay();
       carPlateTimeout = null;
     }, carPlateDisplayMs);
