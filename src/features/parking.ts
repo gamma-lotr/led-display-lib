@@ -13,20 +13,15 @@ import { sendToScreen } from '../utils/send';
 export interface ParkingConfig {
   screenHost: string;
   screenPort?: number;
-  listenPort?: number;
-  cardNumber?: string;
-  screenWidth?: number;
-  screenHeight?: number;
-  rowHeight?: number;
-  carPlateDisplayMs?: number;
-  udpTimeoutMs?: number;
+  listenPort?: number; 
   timeFormat?: string;
   dateFormat?: string;
+  carPlateDisplayMs?: number;
+  udpTimeoutMs?: number;
   rowTexts?: string[];
   rowColors?: number[];
   rowEntryTypes?: EntryType[];
   rowEntrySpeeds?: number[];
-  // New optional overrides for row1 and row2
   row1Text?: string;
   row1Color?: number;
   row2Text?: string;
@@ -41,10 +36,10 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   const host = config.screenHost;
   const port = config.screenPort ?? 9005;
   const listenPort = config.listenPort ?? 9006;
-  const cardNumber = config.cardNumber ?? '13061913001';
-  const screenWidth = config.screenWidth ?? 64;
-  const screenHeight = config.screenHeight ?? 64;
-  const rowHeight = config.rowHeight ?? 16;
+  const cardNumber = '0000000000';
+  const screenWidth = 64;
+  const screenHeight = 64;
+  const rowHeight =  16;
   const carPlateDisplayMs = config.carPlateDisplayMs ?? 10000;
   const udpTimeoutMs = config.udpTimeoutMs ?? 5000;
   const timeFormat = config.timeFormat ?? 'HH:MM';
