@@ -13,7 +13,7 @@ import { sendToScreen } from '../utils/send';
 export interface ParkingConfig {
   screenHost: string;
   screenPort?: number;
-  listenPort?: number; 
+  listenPort?: number;
   timeFormat?: string;
   dateFormat?: string;
   carPlateDisplayMs?: number;
@@ -30,6 +30,7 @@ export interface ParkingConfig {
 
 export interface ParkingInstance {
   stop: () => void;
+  showCarPlate: (plate: string, entryType?: EntryType, entrySpeed?: number) => Promise<void>;
 }
 
 export function startParkingSystem(config: ParkingConfig): ParkingInstance {
@@ -39,7 +40,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   const cardNumber = '0000000000';
   const screenWidth = 64;
   const screenHeight = 64;
-  const rowHeight =  16;
+  const rowHeight = 16;
   const carPlateDisplayMs = config.carPlateDisplayMs ?? 10000;
   const udpTimeoutMs = config.udpTimeoutMs ?? 5000;
   const timeFormat = config.timeFormat ?? 'HH:MM';
@@ -163,10 +164,12 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     await sendToScreen(msg, host, port, udpTimeoutMs);
   }
 
-  async function showCarPlate(plate: string) {
+  // MODIFIED: internal showCarPlate function now accepts optional entry type and speed
+  async function showCarPlate(plate: string, entryType?: EntryType, entrySpeed?: number) {
     if (carPlateTimeout) clearTimeout(carPlateTimeout);
     currentRows[CAR_PLATE_ROW_INDEX].text = plate;
-    currentRows[CAR_PLATE_ROW_INDEX].entryType = EntryType.STATIC;
+    currentRows[CAR_PLATE_ROW_INDEX].entryType = entryType ?? EntryType.STATIC;
+    if (entrySpeed !== undefined) currentRows[CAR_PLATE_ROW_INDEX].entrySpeed = entrySpeed;
     await updateDisplay();
 
     carPlateTimeout = setTimeout(async () => {
@@ -186,6 +189,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
       const plate = msg.toString().trim();
       if (plate) {
         console.log(`[Parking] Received plate: "${plate}" from ${rinfo.address}:${rinfo.port}`);
+        // UDP plates use default static behaviour (no extra args)
         showCarPlate(plate).catch(console.error);
       }
     });
@@ -239,5 +243,11 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
       if (udpServer) udpServer.close();
       console.log('[Parking] System stopped.');
     },
+    // NEW: expose showCarPlate method with optional entryType and entrySpeed
+    showCarPlate: async (plate: string, entryType?: EntryType, entrySpeed?: number) => {
+      await showCarPlate(plate, entryType, entrySpeed);
+    },
   };
 }
+
+export { EntryType };
