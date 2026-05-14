@@ -99,17 +99,31 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     return map[color] ?? FontColor.RED;
   }
 
-  function formatDate(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return dateFormat.replace('YYYY', String(year)).replace('MM', month).replace('DD', day);
+  function formatTime(date: Date): string {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(date);
+    const hour = parts.find(p => p.type === 'hour')?.value.padStart(2, '0') || '00';
+    const minute = parts.find(p => p.type === 'minute')?.value.padStart(2, '0') || '00';
+    return timeFormat.replace('HH', hour).replace('MM', minute);
   }
 
-  function formatTime(date: Date): string {
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return timeFormat.replace('HH', hours).replace('MM', minutes);
+  function formatDate(date: Date): string {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const parts = formatter.formatToParts(date);
+    const year = parts.find(p => p.type === 'year')?.value || '2025';
+    const month = parts.find(p => p.type === 'month')?.value.padStart(2, '0') || '01';
+    const day = parts.find(p => p.type === 'day')?.value.padStart(2, '0') || '01';
+    return dateFormat.replace('YYYY', year).replace('MM', month).replace('DD', day);
   }
 
   function buildProgramParams(programId: number = 1): InstantProgramParams {
