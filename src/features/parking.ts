@@ -34,6 +34,7 @@ export interface ParkingConfig {
 export interface ParkingInstance {
   stop: () => void;
   showCarPlate: (plate: string, entryType?: EntryType, entrySpeed?: number) => Promise<void>;
+  showRow1Message: (message: string, entryType?: EntryType, entrySpeed?: number) => Promise<void>;
 }
 
 export function startParkingSystem(config: ParkingConfig): ParkingInstance {
@@ -329,6 +330,9 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     },
     showCarPlate: async (plate: string, entryType?: EntryType, entrySpeed?: number) => {
       await showCarPlate(plate, entryType, entrySpeed);
+    },
+    showRow1Message: async (message: string, entryType?: EntryType, entrySpeed?: number) => {
+      await showRow1Message(message, entryType, entrySpeed);
     },
   };
 }
