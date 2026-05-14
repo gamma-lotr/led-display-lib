@@ -14,6 +14,7 @@ export interface ParkingConfig {
   screenHost: string;
   screenPort?: number;
   listenPort?: number;
+  timezone?: string;
   timeFormat?: string;
   dateFormat?: string;
   carPlateDisplayMs?: number;
@@ -45,6 +46,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   const udpTimeoutMs = config.udpTimeoutMs ?? 5000;
   const timeFormat = config.timeFormat ?? 'HH:MM';
   const dateFormat = config.dateFormat ?? 'YYYY-MM-DD';
+  const timezone = config.timezone ?? 'Asia/Kuala_Lumpur'
 
   // Base row configurations (order: row1, row2, time, date)
   let defaultRows = config.rowTexts ?? ['Welcome', 'Car Parking', '00:00', '2025-01-01'];
@@ -149,20 +151,39 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
 
   async function setDeviceClock() {
     const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(now);
+    const get = (type: string) => {
+      const part = parts.find(p => p.type === type);
+      return part ? parseInt(part.value, 10) : 0;
+    };
+    const year = get('year');
+    const month = get('month');
+    const day = get('day');
+    const hour = get('hour');
+    const minute = get('minute');
+    const second = get('second');
+
+    // Construct a local date to get the correct weekday
+    const localDate = new Date(year, month - 1, day, hour, minute, second);
+    const weekday = localDate.getDay();
+
     const msg = buildSetClock(
-      {
-        year: now.getFullYear(),
-        month: now.getMonth() + 1,
-        day: now.getDate(),
-        hour: now.getHours(),
-        minute: now.getMinutes(),
-        second: now.getSeconds(),
-        weekday: now.getDay(),
-      },
+      { year, month, day, hour, minute, second, weekday },
       { mode: CommunicationMode.GPRS, cardNumber }
     );
     await sendToScreen(msg, host, port, udpTimeoutMs);
   }
+
 
   // MODIFIED: internal showCarPlate function now accepts optional entry type and speed
   async function showCarPlate(plate: string, entryType?: EntryType, entrySpeed?: number) {

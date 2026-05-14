@@ -8,3 +8,4 @@ export { clearScreen } from './features/clear';
 export { testConnection, DeviceInfo } from './features/connection';
 export { screenOn, screenOff } from './features/screen';
 export { sendToScreen } from './utils/send';
+export { buildRelayControl, sendRelayControl } from './features/relay';
