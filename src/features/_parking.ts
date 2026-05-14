@@ -18,7 +18,6 @@ export interface ParkingConfig {
   timeFormat?: string;
   dateFormat?: string;
   carPlateDisplayMs?: number;
-  row1MessageDisplayMs?: number;
   udpTimeoutMs?: number;
   rowTexts?: string[];
   rowColors?: number[];
@@ -28,7 +27,6 @@ export interface ParkingConfig {
   row1Color?: number;
   row2Text?: string;
   row2Color?: number;
-  maxVisibleChars?: number;
 }
 
 export interface ParkingInstance {
@@ -45,14 +43,12 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   const screenHeight = 64;
   const rowHeight = 16;
   const carPlateDisplayMs = config.carPlateDisplayMs ?? 10000;
-  const row1MessageDisplayMs = config.row1MessageDisplayMs ?? carPlateDisplayMs;
   const udpTimeoutMs = config.udpTimeoutMs ?? 5000;
   const timeFormat = config.timeFormat ?? 'HH:MM';
   const dateFormat = config.dateFormat ?? 'YYYY-MM-DD';
-  const timezone = config.timezone ?? 'Asia/Kuala_Lumpur';
-  const maxVisibleChars = config.maxVisibleChars ?? 8;
+  const timezone = config.timezone ?? 'Asia/Kuala_Lumpur'
 
-  // Row base configs
+  // Base row configurations (order: row1, row2, time, date)
   let defaultRows = config.rowTexts ?? ['Welcome', 'Car Parking', '00:00', '2025-01-01'];
   let defaultColors = config.rowColors ?? [0, 2, 1, 2];
   const defaultEntryTypes = config.rowEntryTypes ?? [
@@ -63,6 +59,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   ];
   const defaultEntrySpeeds = config.rowEntrySpeeds ?? [0, 5, 0, 5];
 
+  // Apply overrides for row1 and row2 (if provided)
   if (config.row1Text !== undefined) defaultRows[0] = config.row1Text;
   if (config.row1Color !== undefined) defaultColors[0] = config.row1Color;
   if (config.row2Text !== undefined) defaultRows[1] = config.row2Text;
@@ -79,18 +76,13 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     entrySpeed: defaultEntrySpeeds[i],
   }));
 
-  // Store defaults for reverting
-  const defaultRow1Text = defaultRows[0];
-  const defaultRow1Color = defaultColors[0];
-  const defaultRow1EntryType = defaultEntryTypes[0];
-  const defaultRow1EntrySpeed = defaultEntrySpeeds[0];
+  // Store the overridden default values for row2 (used when reverting car plate)
   const defaultRow2Text = defaultRows[CAR_PLATE_ROW_INDEX];
   const defaultRow2Color = defaultColors[CAR_PLATE_ROW_INDEX];
   const defaultRow2EntryType = defaultEntryTypes[CAR_PLATE_ROW_INDEX];
   const defaultRow2EntrySpeed = defaultEntrySpeeds[CAR_PLATE_ROW_INDEX];
 
   let carPlateTimeout: NodeJS.Timeout | null = null;
-  let row1MessageTimeout: NodeJS.Timeout | null = null;
   let timeUpdateInterval: NodeJS.Timeout | null = null;
   let udpServer: dgram.Socket | null = null;
 
@@ -107,6 +99,19 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     return map[color] ?? FontColor.RED;
   }
 
+  function formatTime(date: Date): string {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(date);
+    const hour = parts.find(p => p.type === 'hour')?.value.padStart(2, '0') || '00';
+    const minute = parts.find(p => p.type === 'minute')?.value.padStart(2, '0') || '00';
+    return timeFormat.replace('HH', hour).replace('MM', minute);
+  }
+
   function formatDate(date: Date): string {
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
@@ -119,19 +124,6 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     const month = parts.find(p => p.type === 'month')?.value.padStart(2, '0') || '01';
     const day = parts.find(p => p.type === 'day')?.value.padStart(2, '0') || '01';
     return dateFormat.replace('YYYY', year).replace('MM', month).replace('DD', day);
-  }
-
-  function formatTime(date: Date): string {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-    const parts = formatter.formatToParts(date);
-    const hour = parts.find(p => p.type === 'hour')?.value.padStart(2, '0') || '00';
-    const minute = parts.find(p => p.type === 'minute')?.value.padStart(2, '0') || '00';
-    return timeFormat.replace('HH', hour).replace('MM', minute);
   }
 
   function buildProgramParams(programId: number = 1): InstantProgramParams {
@@ -195,6 +187,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     const minute = get('minute');
     const second = get('second');
 
+    // Construct a local date to get the correct weekday
     const localDate = new Date(year, month - 1, day, hour, minute, second);
     const weekday = localDate.getDay();
 
@@ -205,38 +198,9 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     await sendToScreen(msg, host, port, udpTimeoutMs);
   }
 
-  // Row1 message (status)
-  async function showRow1Message(message: string, entryType?: EntryType, entrySpeed?: number) {
-    if (entryType === undefined) {
-      const isLong = message.length > maxVisibleChars;
-      entryType = isLong ? EntryType.SCROLL_RIGHT : EntryType.STATIC;
-      entrySpeed = isLong ? 5 : 0;
-    }
 
-    if (row1MessageTimeout) clearTimeout(row1MessageTimeout);
-    currentRows[0].text = message;
-    currentRows[0].entryType = entryType ?? EntryType.STATIC;
-    if (entrySpeed !== undefined) currentRows[0].entrySpeed = entrySpeed;
-    await updateDisplay();
-
-    row1MessageTimeout = setTimeout(async () => {
-      currentRows[0].text = defaultRow1Text;
-      currentRows[0].entryType = defaultRow1EntryType;
-      currentRows[0].entrySpeed = defaultRow1EntrySpeed;
-      currentRows[0].color = defaultRow1Color;
-      await updateDisplay();
-      row1MessageTimeout = null;
-    }, row1MessageDisplayMs);
-  }
-
-  // Car plate (row2)
+  // MODIFIED: internal showCarPlate function now accepts optional entry type and speed
   async function showCarPlate(plate: string, entryType?: EntryType, entrySpeed?: number) {
-    if (entryType === undefined) {
-      const isLong = plate.length > maxVisibleChars;
-      entryType = isLong ? EntryType.SCROLL_RIGHT : EntryType.STATIC;
-      entrySpeed = isLong ? 5 : 0;
-    }
-
     if (carPlateTimeout) clearTimeout(carPlateTimeout);
     currentRows[CAR_PLATE_ROW_INDEX].text = plate;
     currentRows[CAR_PLATE_ROW_INDEX].entryType = entryType ?? EntryType.STATIC;
@@ -256,24 +220,12 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   function startUdpListener() {
     udpServer = dgram.createSocket('udp4');
     udpServer.on('error', (err) => console.error('UDP listener error:', err));
-    udpServer.on('message', async (msg, rinfo) => {
-      const data = msg.toString().trim();
-      if (!data) return;
-      console.log(`[Parking] Received: "${data}" from ${rinfo.address}:${rinfo.port}`);
-
-      let plate: string;
-      let status: string | null = null;
-      if (data.includes('|')) {
-        const parts = data.split('|');
-        plate = parts[0];
-        status = parts[1];
-      } else {
-        plate = data;
-      }
-
-      await showCarPlate(plate);
-      if (status) {
-        await showRow1Message(status);
+    udpServer.on('message', (msg, rinfo) => {
+      const plate = msg.toString().trim();
+      if (plate) {
+        console.log(`[Parking] Received plate: "${plate}" from ${rinfo.address}:${rinfo.port}`);
+        // UDP plates use default static behaviour (no extra args)
+        showCarPlate(plate).catch(console.error);
       }
     });
     udpServer.bind(listenPort, () => {
@@ -303,7 +255,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     }, 1000);
   }
 
-  // Initialisation
+  // Initialise everything
   (async () => {
     try {
       await setDeviceClock();
@@ -322,11 +274,11 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   return {
     stop: () => {
       if (carPlateTimeout) clearTimeout(carPlateTimeout);
-      if (row1MessageTimeout) clearTimeout(row1MessageTimeout);
       if (timeUpdateInterval) clearInterval(timeUpdateInterval);
       if (udpServer) udpServer.close();
       console.log('[Parking] System stopped.');
     },
+    // NEW: expose showCarPlate method with optional entryType and entrySpeed
     showCarPlate: async (plate: string, entryType?: EntryType, entrySpeed?: number) => {
       await showCarPlate(plate, entryType, entrySpeed);
     },

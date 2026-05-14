@@ -1,11 +1,15 @@
+// send-plate.js
 const dgram = require('dgram');
 const client = dgram.createSocket('udp4');
-const plate = process.argv[2] || 'ABC-1234';
-const targetIP = '172.18.68.22';   // IP of the PC running the parking script
-const targetPort = 9006;
 
-client.send(Buffer.from(plate), targetPort, targetIP, (err) => {
+const plate = process.argv[2] || 'ABC-1234';
+const status = process.argv[3];        // e.g., "Registered" or "Unregistered"
+const targetIP = '172.18.68.17';          // same machine where parking script runs
+const targetPort = 9006;               // must match listenPort above
+
+const message = status ? `${plate}|${status}` : plate;
+client.send(Buffer.from(message), targetPort, targetIP, (err) => {
   if (err) console.error(err);
-  else console.log(`Sent: ${plate}`);
+  else console.log(`Sent: ${message}`);
   client.close();
 });
