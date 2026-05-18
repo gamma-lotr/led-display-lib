@@ -312,12 +312,13 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
       currentRows[TIME_ROW_INDEX].text = formatTime(now);
       currentRows[DATE_ROW_INDEX].text = formatDate(now);
       await updateDisplay();
-      startTimeDateUpdater();
-      startUdpListener();
-      console.log('[Parking] System started.');
     } catch (err) {
-      console.error('[Parking] Initialization failed:', err);
+      console.error('[Parking] Initial network sync failed, but starting clock anyway:', err);
     }
+    
+    startTimeDateUpdater();
+    startUdpListener();
+    console.log('[Parking] System started.');
   })();
 
   return {
