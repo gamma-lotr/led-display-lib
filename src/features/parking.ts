@@ -302,6 +302,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     let lastTime = '';
     let lastDate = '';
     timeUpdateInterval = setInterval(async () => {
+      if (isDeactivated) return;
       const now = new Date();
       const newTime = formatTime(now);
       const newDate = formatDate(now);
@@ -359,8 +360,8 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
       currentRows[0].entryType = EntryType.SCROLL_RIGHT;
       currentRows[0].entrySpeed = 5;
       await updateDisplay();
-      // Relay after display to reduce UDP collisions on multi-screen setups
-      await new Promise((r) => setTimeout(r, 150));
+      // Relay after display; extra delay helps when multiple panels share the same server
+      await new Promise((r) => setTimeout(r, 400));
       try {
         await sendRelayControl(host, port, cardNumber, 1, 'close');
       } catch (err) {
