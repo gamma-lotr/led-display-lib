@@ -353,9 +353,9 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     deactivate: async () => {
       isDeactivated = true;
       try {
-        await sendRelayControl(host, port, cardNumber, 1, 'open');
+        await sendRelayControl(host, port, cardNumber, 1, 'close');
       } catch (err) {
-        console.error('[Parking] Failed to turn on relay during deactivate:', err);
+        console.error('[Parking] Failed to close relay during deactivate:', err);
       }
       if (row1MessageTimeout) clearTimeout(row1MessageTimeout);
       currentRows[0].text = 'Not Available';
@@ -367,9 +367,9 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     activate: async () => {
       isDeactivated = false;
       try {
-        await sendRelayControl(host, port, cardNumber, 1, 'close');
+        await sendRelayControl(host, port, cardNumber, 1, 'open');
       } catch (err) {
-        console.error('[Parking] Failed to turn off relay during activate:', err);
+        console.error('[Parking] Failed to open relay during activate:', err);
       }
       if (row1MessageTimeout) clearTimeout(row1MessageTimeout);
       currentRows[0].text = defaultRow1Text;
