@@ -127,15 +127,28 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     return dateFormat.replace('YYYY', year).replace('MM', month).replace('DD', day);
   }
 
+  /** ICU can return hour "24" at midnight (h24 cycle); LED should show 00:00–23:59. */
+  function hourFromParts(parts: Intl.DateTimeFormatPart[]): number {
+    const raw = parts.find(p => p.type === 'hour')?.value ?? '0';
+    const h = parseInt(raw, 10);
+    if (raw === '24' || h === 24) return 0;
+    return Number.isNaN(h) ? 0 : h;
+  }
+
+  function hourPartToDisplay(parts: Intl.DateTimeFormatPart[]): string {
+    return String(hourFromParts(parts)).padStart(2, '0');
+  }
+
   function formatTime(date: Date): string {
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: timezone,
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
+      hourCycle: 'h23',
     });
     const parts = formatter.formatToParts(date);
-    const hour = parts.find(p => p.type === 'hour')?.value.padStart(2, '0') || '00';
+    const hour = hourPartToDisplay(parts);
     const minute = parts.find(p => p.type === 'minute')?.value.padStart(2, '0') || '00';
     return timeFormat.replace('HH', hour).replace('MM', minute);
   }
@@ -188,6 +201,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
       minute: '2-digit',
       second: '2-digit',
       hour12: false,
+      hourCycle: 'h23',
     });
     const parts = formatter.formatToParts(now);
     const get = (type: string) => {
@@ -197,7 +211,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     const year = get('year');
     const month = get('month');
     const day = get('day');
-    const hour = get('hour');
+    const hour = hourFromParts(parts);
     const minute = get('minute');
     const second = get('second');
 
