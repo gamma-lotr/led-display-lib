@@ -212,6 +212,11 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
 
   // Row1 message (status)
   async function showRow1Message(message: string, entryType?: EntryType, entrySpeed?: number) {
+    if (isDeactivated) {
+      console.log(`[Parking] Ignored row1 message "${message}" because system is deactivated`);
+      return;
+    }
+
     if (entryType === undefined) {
       const isLong = message.length > maxVisibleChars;
       entryType = isLong ? EntryType.SCROLL_RIGHT : EntryType.STATIC;
@@ -348,29 +353,29 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     deactivate: async () => {
       isDeactivated = true;
       try {
-        await sendRelayControl(host, port, cardNumber, 1, 'open', udpTimeoutMs);
+        await sendRelayControl(host, port, cardNumber, 1, 'open');
       } catch (err) {
         console.error('[Parking] Failed to turn on relay during deactivate:', err);
       }
-      if (carPlateTimeout) clearTimeout(carPlateTimeout);
-      currentRows[CAR_PLATE_ROW_INDEX].text = 'Not Available';
-      currentRows[CAR_PLATE_ROW_INDEX].color = 0; // 0 maps to FontColor.RED
-      currentRows[CAR_PLATE_ROW_INDEX].entryType = EntryType.SCROLL_RIGHT;
-      currentRows[CAR_PLATE_ROW_INDEX].entrySpeed = 5;
+      if (row1MessageTimeout) clearTimeout(row1MessageTimeout);
+      currentRows[0].text = 'Not Available';
+      currentRows[0].color = 0; // RED
+      currentRows[0].entryType = EntryType.SCROLL_RIGHT;
+      currentRows[0].entrySpeed = 5;
       await updateDisplay();
     },
     activate: async () => {
       isDeactivated = false;
       try {
-        await sendRelayControl(host, port, cardNumber, 1, 'close', udpTimeoutMs);
+        await sendRelayControl(host, port, cardNumber, 1, 'close');
       } catch (err) {
         console.error('[Parking] Failed to turn off relay during activate:', err);
       }
-      if (carPlateTimeout) clearTimeout(carPlateTimeout);
-      currentRows[CAR_PLATE_ROW_INDEX].text = defaultRow2Text;
-      currentRows[CAR_PLATE_ROW_INDEX].color = defaultRow2Color;
-      currentRows[CAR_PLATE_ROW_INDEX].entryType = defaultRow2EntryType;
-      currentRows[CAR_PLATE_ROW_INDEX].entrySpeed = defaultRow2EntrySpeed;
+      if (row1MessageTimeout) clearTimeout(row1MessageTimeout);
+      currentRows[0].text = defaultRow1Text;
+      currentRows[0].color = defaultRow1Color;
+      currentRows[0].entryType = defaultRow1EntryType;
+      currentRows[0].entrySpeed = defaultRow1EntrySpeed;
       await updateDisplay();
     },
   };

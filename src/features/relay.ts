@@ -1,5 +1,5 @@
 import { buildMessage } from '../protocol';
-import { sendToScreen } from '../utils/send';
+import { sendToScreenNoWait } from '../utils/send';
 import { CommandCode, CommunicationMode } from '../types';
 import type { MessageOptions, RelayControlParams } from '../types';
 
@@ -31,11 +31,10 @@ export async function sendRelayControl(
   cardNumber: string,
   relayId: number,
   action: 'open' | 'close' | 'read',
-  timeoutMs?: number
 ): Promise<void> {
   const msg = buildRelayControl(
     { relayId, action },
     { mode: CommunicationMode.GPRS, cardNumber }
   );
-  await sendToScreen(msg, host, port, timeoutMs);
+  await sendToScreenNoWait(msg, host, port);
 }

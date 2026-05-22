@@ -34,3 +34,25 @@ export function sendToScreen(
     });
   });
 }
+
+/**
+ * Fire-and-forget UDP send: resolves as soon as the packet is sent.
+ * Use this for commands that do not produce a reply (e.g. relay control).
+ */
+export function sendToScreenNoWait(
+  message: Buffer,
+  host: string,
+  port: number
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = dgram.createSocket('udp4');
+    socket.send(message, port, host, (err) => {
+      socket.close();
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
