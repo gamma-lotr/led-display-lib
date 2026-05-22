@@ -9,6 +9,7 @@ import {
   InstantProgramParams,
 } from '../types';
 import { sendToScreen } from '../utils/send';
+import { sendRelayControl } from './relay';
 
 export interface ParkingConfig {
   screenHost: string;
@@ -35,6 +36,8 @@ export interface ParkingInstance {
   stop: () => void;
   showCarPlate: (plate: string, entryType?: EntryType, entrySpeed?: number) => Promise<void>;
   showRow1Message: (message: string, entryType?: EntryType, entrySpeed?: number) => Promise<void>;
+  deactivate: () => Promise<void>;
+  activate: () => Promise<void>;
 }
 
 export function startParkingSystem(config: ParkingConfig): ParkingInstance {
@@ -94,6 +97,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   let row1MessageTimeout: NodeJS.Timeout | null = null;
   let timeUpdateInterval: NodeJS.Timeout | null = null;
   let udpServer: dgram.Socket | null = null;
+  let isDeactivated = false;
 
   function mapColor(color: number): FontColor {
     const map: Record<number, FontColor> = {
@@ -232,6 +236,11 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
 
   // Car plate (row2)
   async function showCarPlate(plate: string, entryType?: EntryType, entrySpeed?: number) {
+    if (isDeactivated) {
+      console.log(`[Parking] Ignored car plate ${plate} because system is deactivated`);
+      return;
+    }
+
     if (entryType === undefined) {
       const isLong = plate.length > maxVisibleChars;
       entryType = isLong ? EntryType.SCROLL_RIGHT : EntryType.STATIC;
@@ -258,6 +267,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     udpServer = dgram.createSocket('udp4');
     udpServer.on('error', (err) => console.error('UDP listener error:', err));
     udpServer.on('message', async (msg, rinfo) => {
+      if (isDeactivated) return;
       const data = msg.toString().trim();
       if (!data) return;
       console.log(`[Parking] Received: "${data}" from ${rinfo.address}:${rinfo.port}`);
@@ -334,6 +344,34 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     },
     showRow1Message: async (message: string, entryType?: EntryType, entrySpeed?: number) => {
       await showRow1Message(message, entryType, entrySpeed);
+    },
+    deactivate: async () => {
+      isDeactivated = true;
+      try {
+        await sendRelayControl(host, port, cardNumber, 1, 'open', udpTimeoutMs);
+      } catch (err) {
+        console.error('[Parking] Failed to turn on relay during deactivate:', err);
+      }
+      if (carPlateTimeout) clearTimeout(carPlateTimeout);
+      currentRows[CAR_PLATE_ROW_INDEX].text = 'Not Available';
+      currentRows[CAR_PLATE_ROW_INDEX].color = 0; // 0 maps to FontColor.RED
+      currentRows[CAR_PLATE_ROW_INDEX].entryType = EntryType.SCROLL_RIGHT;
+      currentRows[CAR_PLATE_ROW_INDEX].entrySpeed = 5;
+      await updateDisplay();
+    },
+    activate: async () => {
+      isDeactivated = false;
+      try {
+        await sendRelayControl(host, port, cardNumber, 1, 'close', udpTimeoutMs);
+      } catch (err) {
+        console.error('[Parking] Failed to turn off relay during activate:', err);
+      }
+      if (carPlateTimeout) clearTimeout(carPlateTimeout);
+      currentRows[CAR_PLATE_ROW_INDEX].text = defaultRow2Text;
+      currentRows[CAR_PLATE_ROW_INDEX].color = defaultRow2Color;
+      currentRows[CAR_PLATE_ROW_INDEX].entryType = defaultRow2EntryType;
+      currentRows[CAR_PLATE_ROW_INDEX].entrySpeed = defaultRow2EntrySpeed;
+      await updateDisplay();
     },
   };
 }
