@@ -15,6 +15,7 @@ export interface ParkingConfig {
   screenHost: string;
   screenPort?: number;
   listenPort?: number;
+  cardNumber?: string;
   timezone?: string;
   timeFormat?: string;
   dateFormat?: string;
@@ -44,7 +45,7 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   const host = config.screenHost;
   const port = config.screenPort ?? 9005;
   const listenPort = config.listenPort ?? 9006;
-  const cardNumber = '0000000000';
+  const cardNumber = config.cardNumber ?? '0000000000';
   const screenWidth = 64;
   const screenHeight = 64;
   const rowHeight = 16;
@@ -352,17 +353,19 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     },
     deactivate: async () => {
       isDeactivated = true;
-      try {
-        await sendRelayControl(host, port, cardNumber, 1, 'close');
-      } catch (err) {
-        console.error('[Parking] Failed to close relay during deactivate:', err);
-      }
       if (row1MessageTimeout) clearTimeout(row1MessageTimeout);
       currentRows[0].text = 'Not Available';
       currentRows[0].color = 0; // RED
       currentRows[0].entryType = EntryType.SCROLL_RIGHT;
       currentRows[0].entrySpeed = 5;
       await updateDisplay();
+      // Relay after display to reduce UDP collisions on multi-screen setups
+      await new Promise((r) => setTimeout(r, 150));
+      try {
+        await sendRelayControl(host, port, cardNumber, 1, 'close');
+      } catch (err) {
+        console.error('[Parking] Failed to close relay during deactivate:', err);
+      }
     },
     activate: async () => {
       isDeactivated = false;
@@ -380,5 +383,3 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     },
   };
 }
-
-export { EntryType };

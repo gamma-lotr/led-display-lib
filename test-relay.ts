@@ -1,6 +1,6 @@
 import { buildRelayControl, sendToScreen, CommunicationMode } from './src';
 
-const HOST = '172.18.60.180';
+const HOST = '172.18.60.181';
 const PORT = 9005;
 const CARD_NUMBER = '0000000000';   // or use your actual card number
 
