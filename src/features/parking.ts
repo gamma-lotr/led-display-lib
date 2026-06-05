@@ -127,7 +127,6 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     return dateFormat.replace('YYYY', year).replace('MM', month).replace('DD', day);
   }
 
-  /** ICU can return hour "24" at midnight (h24 cycle); LED should show 00:00–23:59. */
   function hourFromParts(parts: Intl.DateTimeFormatPart[]): number {
     const raw = parts.find(p => p.type === 'hour')?.value ?? '0';
     const h = parseInt(raw, 10);
@@ -180,52 +179,59 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
   }
 
   async function updateDisplay() {
-    const params = buildProgramParams(1);
-    const saveMsg = buildSavedProgram(params, { mode: CommunicationMode.GPRS, cardNumber });
-    await sendToScreen(saveMsg, host, port, udpTimeoutMs);
-    const playMsg = buildProgramOnDemand(
-      { programId: 1, action: 'play', flag: 'continuous' },
-      { mode: CommunicationMode.GPRS, cardNumber }
-    );
-    await sendToScreen(playMsg, host, port, udpTimeoutMs);
+    try {
+      const params = buildProgramParams(1);
+      const saveMsg = buildSavedProgram(params, { mode: CommunicationMode.GPRS, cardNumber });
+      await sendToScreen(saveMsg, host, port, udpTimeoutMs);
+      const playMsg = buildProgramOnDemand(
+        { programId: 1, action: 'play', flag: 'continuous' },
+        { mode: CommunicationMode.GPRS, cardNumber }
+      );
+      await sendToScreen(playMsg, host, port, udpTimeoutMs);
+    } catch (err) {
+      console.error('[Parking] updateDisplay failed:', err);
+    }
   }
 
   async function setDeviceClock() {
-    const now = new Date();
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      hourCycle: 'h23',
-    });
-    const parts = formatter.formatToParts(now);
-    const get = (type: string) => {
-      const part = parts.find(p => p.type === type);
-      return part ? parseInt(part.value, 10) : 0;
-    };
-    const year = get('year');
-    const month = get('month');
-    const day = get('day');
-    const hour = hourFromParts(parts);
-    const minute = get('minute');
-    const second = get('second');
+    try {
+      const now = new Date();
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        hourCycle: 'h23',
+      });
+      const parts = formatter.formatToParts(now);
+      const get = (type: string) => {
+        const part = parts.find(p => p.type === type);
+        return part ? parseInt(part.value, 10) : 0;
+      };
+      const year = get('year');
+      const month = get('month');
+      const day = get('day');
+      const hour = hourFromParts(parts);
+      const minute = get('minute');
+      const second = get('second');
 
-    const localDate = new Date(year, month - 1, day, hour, minute, second);
-    const weekday = localDate.getDay();
+      const localDate = new Date(year, month - 1, day, hour, minute, second);
+      const weekday = localDate.getDay();
 
-    const msg = buildSetClock(
-      { year, month, day, hour, minute, second, weekday },
-      { mode: CommunicationMode.GPRS, cardNumber }
-    );
-    await sendToScreen(msg, host, port, udpTimeoutMs);
+      const msg = buildSetClock(
+        { year, month, day, hour, minute, second, weekday },
+        { mode: CommunicationMode.GPRS, cardNumber }
+      );
+      await sendToScreen(msg, host, port, udpTimeoutMs);
+    } catch (err) {
+      console.error('[Parking] setDeviceClock failed:', err);
+    }
   }
 
-  // Row1 message (status)
   async function showRow1Message(message: string, entryType?: EntryType, entrySpeed?: number) {
     if (isDeactivated) {
       console.log(`[Parking] Ignored row1 message "${message}" because system is deactivated`);
@@ -245,16 +251,20 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     await updateDisplay();
 
     row1MessageTimeout = setTimeout(async () => {
-      currentRows[0].text = defaultRow1Text;
-      currentRows[0].entryType = defaultRow1EntryType;
-      currentRows[0].entrySpeed = defaultRow1EntrySpeed;
-      currentRows[0].color = defaultRow1Color;
-      await updateDisplay();
-      row1MessageTimeout = null;
+      try {
+        currentRows[0].text = defaultRow1Text;
+        currentRows[0].entryType = defaultRow1EntryType;
+        currentRows[0].entrySpeed = defaultRow1EntrySpeed;
+        currentRows[0].color = defaultRow1Color;
+        await updateDisplay();
+      } catch (err) {
+        console.error('[Parking] Failed to revert row1 message:', err);
+      } finally {
+        row1MessageTimeout = null;
+      }
     }, row1MessageDisplayMs);
   }
 
-  // Car plate (row2)
   async function showCarPlate(plate: string, entryType?: EntryType, entrySpeed?: number) {
     if (isDeactivated) {
       console.log(`[Parking] Ignored car plate ${plate} because system is deactivated`);
@@ -274,12 +284,17 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     await updateDisplay();
 
     carPlateTimeout = setTimeout(async () => {
-      currentRows[CAR_PLATE_ROW_INDEX].text = defaultRow2Text;
-      currentRows[CAR_PLATE_ROW_INDEX].entryType = defaultRow2EntryType;
-      currentRows[CAR_PLATE_ROW_INDEX].entrySpeed = defaultRow2EntrySpeed;
-      currentRows[CAR_PLATE_ROW_INDEX].color = defaultRow2Color;
-      await updateDisplay();
-      carPlateTimeout = null;
+      try {
+        currentRows[CAR_PLATE_ROW_INDEX].text = defaultRow2Text;
+        currentRows[CAR_PLATE_ROW_INDEX].entryType = defaultRow2EntryType;
+        currentRows[CAR_PLATE_ROW_INDEX].entrySpeed = defaultRow2EntrySpeed;
+        currentRows[CAR_PLATE_ROW_INDEX].color = defaultRow2Color;
+        await updateDisplay();
+      } catch (err) {
+        console.error('[Parking] Failed to revert car plate:', err);
+      } finally {
+        carPlateTimeout = null;
+      }
     }, carPlateDisplayMs);
   }
 
@@ -317,21 +332,25 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
     let lastDate = '';
     timeUpdateInterval = setInterval(async () => {
       if (isDeactivated) return;
-      const now = new Date();
-      const newTime = formatTime(now);
-      const newDate = formatDate(now);
-      let changed = false;
-      if (newTime !== lastTime) {
-        currentRows[TIME_ROW_INDEX].text = newTime;
-        lastTime = newTime;
-        changed = true;
+      try {
+        const now = new Date();
+        const newTime = formatTime(now);
+        const newDate = formatDate(now);
+        let changed = false;
+        if (newTime !== lastTime) {
+          currentRows[TIME_ROW_INDEX].text = newTime;
+          lastTime = newTime;
+          changed = true;
+        }
+        if (newDate !== lastDate) {
+          currentRows[DATE_ROW_INDEX].text = newDate;
+          lastDate = newDate;
+          changed = true;
+        }
+        if (changed) await updateDisplay();
+      } catch (err) {
+        console.error('[Parking] Time/date update failed:', err);
       }
-      if (newDate !== lastDate) {
-        currentRows[DATE_ROW_INDEX].text = newDate;
-        lastDate = newDate;
-        changed = true;
-      }
-      if (changed) await updateDisplay();
     }, 1000);
   }
 
@@ -374,7 +393,6 @@ export function startParkingSystem(config: ParkingConfig): ParkingInstance {
       currentRows[0].entryType = EntryType.SCROLL_RIGHT;
       currentRows[0].entrySpeed = 5;
       await updateDisplay();
-      // Relay after display; extra delay helps when multiple panels share the same server
       await new Promise((r) => setTimeout(r, 400));
       try {
         await sendRelayControl(host, port, cardNumber, 1, 'close');
